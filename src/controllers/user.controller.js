@@ -89,7 +89,7 @@ const loginUser=asyncHandler(async(req,res)=>{
 
     const { email, username, password } = req.body;
 
-    if(!email && !username){
+    if(!email?.trim() && !username?.trim()){
         throw new ApiError(400,"Email or username is required")
     }
     //check if exists in database(username or email)
@@ -183,9 +183,9 @@ const refreshAccessToken=asyncHandler(async(req,res)=>{
     }
 })
 const changeCurrentPassword=asyncHandler(async(req,res)=>{
-    console.log(req.body)
+    // console.log(req.body)
     const {oldPassword,newPassword}=req.body;
-    if(!oldPassword || !newPassword){
+    if(!oldPassword?.trim() || !newPassword?.trim()){
         throw new ApiError(400,"Old password and new password are required")
     } 
     const user=await User.findById(req.user._id)
@@ -204,7 +204,7 @@ const getCurrentUser=asyncHandler(async(req,res)=>{
 })
 const updateAccountDetails=asyncHandler(async(req,res)=>{
     const {fullName,email} = req.body
-    if(!fullName || !email){
+    if(!fullName?.trim() || !email?.trim()){
         throw new ApiError(400,"Both the fields are required")
     }
     const updatedUser=await User.findByIdAndUpdate(req.user?._id,

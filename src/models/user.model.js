@@ -31,7 +31,7 @@ const userSchema=new Schema({
     coverImage:{
         type:String,
     },
-    watchHistoty:[{
+    watchHistory:[{
         type:Schema.Types.ObjectId,
         ref:"Video"
     }],
