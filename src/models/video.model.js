@@ -4,21 +4,21 @@ const videoSchema=new Schema({
     videoFile:{
         url:{
             type:String,
-            required:true
+            // required:true
         },
         public_id:{
             type:String,
-            required:true
+            // required:true
         },
     },
     thumbnail:{
         url:{
             type:String,
-            required:true
+            // required:true
         },
         public_id:{
             type:String,
-            required:true
+            // required:true
         },
     },
     
@@ -32,7 +32,7 @@ const videoSchema=new Schema({
     },
     duration:{
         type:Number, //cludinary url
-        required:true,
+        // required:true,
     },
     views:{
         type:Number,
@@ -45,6 +45,9 @@ const videoSchema=new Schema({
     owner:{
         type:Schema.Types.ObjectId,
         ref:"User",
+    },
+    isPublished:{
+        type:Boolean
     }
 },{
     timestamps:true

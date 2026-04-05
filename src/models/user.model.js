@@ -40,7 +40,7 @@ const userSchema=new Schema({
         required:[true,'Password is required'],
 
     },
-    refreshToken:{
+    refreshToken:{  
         type:String,
     }
 },
@@ -80,5 +80,5 @@ userSchema.methods.generateRefreshToken=function(){
             expiresIn:process.env.REFRESH_TOKEN_EXPIRY
         }
     )
-}
+}   
 export const User=mongoose.model("User",userSchema)

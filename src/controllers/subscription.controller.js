@@ -4,6 +4,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import mongoose from "mongoose"
+import redisClient from "../utils/redis.js";
 const toggleSubscription = asyncHandler(async (req, res) => {
     const channelId=new mongoose.Types.ObjectId(req.params.channelId)
     // TODO: toggle subscription
@@ -15,6 +16,13 @@ const toggleSubscription = asyncHandler(async (req, res) => {
         subscriber : userId,
         channel : channelId
     })
+    const channelUser = await User.findById(channelId).select("username");
+
+    const subscriberUser = req.user.username
+    const keys1 = await redisClient.keys(`channel:${channelUser.username}:*`); 
+    const keys2 = await redisClient.keys(`channel:${subscriberUser.username}:*`);
+    await redisClient.del([...keys1, ...keys2]);
+    await redisClient.del(`channelStats:${channelUser._id}`);
     if(!deletedSubscription){
         const createdSubscription=await Subscription.create({
             subscriber:userId,

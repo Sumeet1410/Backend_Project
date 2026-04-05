@@ -6,6 +6,7 @@ import {ApiError} from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
 import mongoose from "mongoose"
+import redisClient from "../utils/redis.js"
 const getVideoComments = asyncHandler(async (req, res) => {
     //TODO: get all comments for a video
     const {videoId}=req.params;
@@ -58,11 +59,14 @@ const addComment = asyncHandler(async (req, res) => {
         content,
         video:videoId,
         owner:ownerId
-    });
+    }); 
+    const keys=await redisClient.keys(`comments:${videoId}:*`)
+    if(keys.length>0){
+        await redisClient.del(keys);
+    }
     return res.status(200).json(
         new ApiResponse(200,comment,"Comment added succesfully")
     );
-
 
 })
 
@@ -86,6 +90,11 @@ const updateComment = asyncHandler(async (req, res) => {
     }
     comment.content=newContent;
     await comment.save();
+    const videoId=comment.video;
+    const keys=await redisClient.keys(`comments:${videoId}:*`)
+    if(keys.length>0){
+        await redisClient.del(keys);
+    }
     return res.status(200).json(
         new ApiResponse(200,newContent,"updated successfully")
     )
@@ -106,6 +115,10 @@ const deleteComment = asyncHandler(async (req, res) => {
     // if(!comment){
     //     throw new ApiError(404,"Comment not found");
     // }
+    // const keys=await redisClient.keys(`comments:${comment.video}:*`)
+    // if(keys.length>0){
+    //     await redisClient.del(keys);
+    // }
     // if(comment.owner.toString()!=userId.toString()){
     //     throw new ApiError(403,"Invalid access request");
     // }
@@ -113,9 +126,16 @@ const deleteComment = asyncHandler(async (req, res) => {
     if(!deletedCommented){
         throw new ApiError(404,"Comment not found or unauthorised request")
     }
+    const videoId = deletedCommented.video;
+
+    const keys = await redisClient.keys(`comments:${videoId}:*`);
+    if (keys.length > 0) {
+        await redisClient.del(keys);
+    }
     await Like.deleteMany({
         comment:commentId
     })
+    
     return res.status(200).json(
         new ApiResponse(200,{},"Comment deleted")
     );
