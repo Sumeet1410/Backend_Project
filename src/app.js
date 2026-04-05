@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import { ApiResponse } from './utils/ApiResponse.js';
 const app=express();
 app.use(cors({
     origin: process.env.CORS_ORIGIN,
@@ -25,6 +26,11 @@ import subscriptionRouter from './routes/subscription.routes.js'
 import healthCheckRouter from './routes/health.routes.js'
 import { getGeneralLimiter } from './middlewares/rateLimit.middleware.js';
 //routes declaration
+app.get("/",(req,res)=>{
+  return res.json(new ApiResponse(200,{
+    
+  },"Success"))
+})
 app.use("/api/v1/users",userRouter)
 app.use("/api/v1/comments",commentRouter)
 app.use("/api/v1/videos",videoRouter)
