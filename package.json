@@ -5,8 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js",
-    "worker": "nodemon src/workers/video.worker.js",
-    "start": "node src/index.js"
+    "worker": "nodemon src/workers/video.worker.js"
   },
   "keywords": [
     "javascript",
