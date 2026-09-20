@@ -3,4 +3,4 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
-CMD ["node","workers/video.worker.js"]
+CMD ["node", "src/workers/video.worker.js"]
