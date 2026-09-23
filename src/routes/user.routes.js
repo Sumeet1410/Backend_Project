@@ -2,7 +2,6 @@ import {Router} from 'express';
 import {loginUser, registerUser,logoutUser,refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfile, getWatchHistory } from '../controllers/user.controller.js';
 import {upload} from "../middlewares/multer.middleware.js"
 import { verifyJWT } from '../middlewares/auth.middleware.js';
-import { getAllVideos } from '../controllers/video.controller.js';
 import  cache  from "../middlewares/redis.middleware.js";
 import { getAuthLimiter } from '../middlewares/rateLimit.middleware.js';
 const router=Router();
@@ -38,7 +37,7 @@ router.route("/update-avatar").patch(verifyJWT,upload.single("avatar"),updateUse
 router.route("/update-cover-image").patch(verifyJWT,upload.single("coverImage"),updateUserCoverImage);
 router.route("/get-channel/:username").get(verifyJWT,
     cache((req) => 
-    `channel:${req.params.username}:${req.user?._id || "guest"}`
+    `channel:${req.params.username?.toLowerCase()}:${req.user?._id || "guest"}`
   , 300),
 getUserChannelProfile)
 router.route("/history").get(
@@ -46,5 +45,4 @@ router.route("/history").get(
   cache((req) => `watchHistory:${req.user._id}`, 60),
   getWatchHistory
 )
-router.get("/videos", getAllVideos);
-export default router
+export default router;

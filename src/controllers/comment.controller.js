@@ -82,7 +82,7 @@ const updateComment = asyncHandler(async (req, res) => {
     if(!comment){
         throw new ApiError(404,"Comment not found");
     }
-    if(comment.owner.toString()!=userId.toString()){
+    if(comment.owner.toString() !== userId.toString()){
         throw new ApiError(403,"Invalid access request");
     }
     if(!newContent?.trim()){
@@ -96,7 +96,7 @@ const updateComment = asyncHandler(async (req, res) => {
         await redisClient.del(keys);
     }
     return res.status(200).json(
-        new ApiResponse(200,newContent,"updated successfully")
+        new ApiResponse(200,comment,"updated successfully")
     )
     
     

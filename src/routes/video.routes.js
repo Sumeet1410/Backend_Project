@@ -1,7 +1,7 @@
-import {publishAVideo,getVideoById,updateVideo,deleteVideo,togglePublishStatus,watchVideo,getAllVideos} from "../controllers/video.controller.js";
+import { publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus, watchVideo, getAllVideos, getAllVideosByUser } from "../controllers/video.controller.js";
 import { getVideoComments } from "../controllers/comment.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
-import { Router } from "express"
+import { Router } from "express";
 import { upload } from "../middlewares/multer.middleware.js";
 import cache from "../middlewares/redis.middleware.js";
 import { getUploadLimiter } from "../middlewares/rateLimit.middleware.js";
@@ -25,6 +25,7 @@ router.route("/publish-video").post(verifyJWT,
 // router.route("/get-video/:videoId").get(getVideoById);
 router.get(
   "/get-video/:videoId",
+  verifyJWT,
   cache((req) => `video:${req.params.videoId}`, 300),
   getVideoById
 );
@@ -44,10 +45,19 @@ router.route("/:videoId/comments").get(
 router.get(
   "/all-videos",
   cache((req) => {
+    const { page=1, limit=10, query="", sortBy="createdAt", sortType="desc" } = req.query;
+
+    return `videos:all:${page}:${limit}:${query}:${sortBy}:${sortType}`;
+  }, 120),
+  getAllVideos
+);
+router.get(
+  "/user-videos",
+  cache((req) => {
     const { page=1, limit=10, query="", sortBy="createdAt", sortType="desc", username="" } = req.query;
 
-    return `videos:${username}:${page}:${limit}:${query}:${sortBy}:${sortType}`;
-  }, 300),
-  getAllVideos
+    return `videos:user:${username}:${page}:${limit}:${query}:${sortBy}:${sortType}`;
+  }, 120),
+  getAllVideosByUser
 );
 export default router;

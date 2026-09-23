@@ -3,7 +3,7 @@
     import ffprobePath from "ffprobe-static";
     ffmpeg.setFfmpegPath(ffmpegPath);
     ffmpeg.setFfprobePath(ffprobePath.path);
-    import path from "path"
+    import path from "path";
     import { Video } from "../models/video.model.js";
     import { User } from "../models/user.model.js";
     import { ApiError } from "../utils/ApiError.js";
@@ -18,33 +18,45 @@
     import {v2 as cloudinary} from "cloudinary"
     import redisClient from "../utils/redis.js"
     import { enqueueVideoProcessing } from "../queue/video.producer.js";
-    const getAllVideos = asyncHandler(async (req, res) => {
-        let { page = 1, limit = 10, query, sortBy, sortType, username } = req.query
-        if(!username?.trim()){
-            throw new ApiError(400,"Invalid user id");
+
+    const clearVideoListCache = async (username) => {
+        const patterns = [
+            `videos:${username}:*`,
+            `videos:user:${username}:*`,
+            `videos:all:*`
+        ];
+        for (const pattern of patterns) {
+            const matchedKeys = await redisClient.keys(pattern);
+            if (matchedKeys.length > 0) {
+                await redisClient.del(matchedKeys);
+            }
         }
-        const user= await User.findOne({username});
-        if(!user){
-            throw new ApiError(404,"user not found");
+    };
+    const getAllVideosByUser = asyncHandler(async (req, res) => {
+        let { page = 1, limit = 10, query, sortBy, sortType, username } = req.query;
+        if (!username?.trim()) {
+            throw new ApiError(400, "Username is required to fetch user videos");
         }
-        // console.log(typeof user._id);
+        const user = await User.findOne({ username });
+        if (!user) {
+            throw new ApiError(404, "User not found");
+        }
         sortBy = sortBy || "createdAt";
-        sortType = sortType==="asc" ? 1 : -1;
+        sortType = sortType === "asc" ? 1 : -1;
         let filter = { owner: user._id };
         if (query) {    
             filter.title = { $regex: query, $options: "i" };
         }
         page = Math.max(parseInt(page) || 1, 1);
         limit = Math.max(parseInt(limit) || 10, 1);
-        const skip=(page-1)*limit;
-        const videos=await Video.find(filter)
-        .populate("owner")
-        .skip(skip)
-        .limit(limit)   
-        .sort({ [sortBy]: sortType})
-        const totalVideoCount=await Video.countDocuments(filter)
-        return res.status(200)
-        .json(new ApiResponse(200,{
+        const skip = (page - 1) * limit;
+        const videos = await Video.find(filter)
+            .populate("owner")
+            .skip(skip)
+            .limit(limit)   
+            .sort({ [sortBy]: sortType });
+        const totalVideoCount = await Video.countDocuments(filter);
+        return res.status(200).json(new ApiResponse(200, {
             videos,
             page,
             limit,
@@ -52,16 +64,45 @@
             sortType,
             totalVideoCount
         }));
-        //TODO: get all videos based on query, sort, pagination
-    })
-    const getVideoDuration = (filePath) => {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-        if (err) return reject(err);
-        resolve(metadata.format.duration);
-        });
     });
-    };
+
+    const getAllVideos = asyncHandler(async (req, res) => {
+        let { page = 1, limit = 10, query, sortBy, sortType } = req.query;
+        sortBy = sortBy || "createdAt";
+        sortType = sortType === "asc" ? 1 : -1;
+        let filter = { isPublic: { $ne: false } };
+        if (query) {
+            filter.$or = [
+                { title: { $regex: query, $options: "i" } },
+                { description: { $regex: query, $options: "i" } }
+            ];
+        }
+        page = Math.max(parseInt(page) || 1, 1);
+        limit = Math.max(parseInt(limit) || 10, 1);
+        const skip = (page - 1) * limit;
+        const videos = await Video.find(filter)
+            .populate("owner")
+            .skip(skip)
+            .limit(limit)
+            .sort({ [sortBy]: sortType });
+        const totalVideoCount = await Video.countDocuments(filter);
+        return res.status(200).json(new ApiResponse(200, {
+            videos,
+            page,
+            limit,
+            sortBy,
+            sortType,
+            totalVideoCount
+        }));
+    });
+    // const getVideoDuration = (filePath) => {
+    // return new Promise((resolve, reject) => {
+    //     ffmpeg.ffprobe(filePath, (err, metadata) => {
+    //     if (err) return reject(err);
+    //     resolve(metadata.format.duration);
+    //     });
+    // });
+    // };
     const publishAVideo = asyncHandler(async (req, res) => {
         const { title, description } = req.body;
         let { isPublic } = req.body;
@@ -73,10 +114,8 @@
         else if(isPublic=="true") isPublic=true;
         else isPublic=false;
         // console.log(isPublic);
-        console.log(req.files);
-        const videoFileLocalPath = path.resolve(req.files?.videoFile[0]?.path);
-        const thumbnailLocalPath=path.resolve(req.files?.thumbnail[0]?.path);
-        console.log(videoFileLocalPath, fs.existsSync(videoFileLocalPath))
+        const videoFileLocalPath = req.files?.videoFile?.[0]?.path ? path.resolve(req.files.videoFile[0].path) : null;
+        const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path ? path.resolve(req.files.thumbnail[0].path) : null;
         if(!videoFileLocalPath || !thumbnailLocalPath){
             throw new ApiError(400,"Missing video file or thumbnail");
         }
@@ -110,19 +149,22 @@
         // if(!video){
         //     throw new ApiError(500,"Error occured during publishing video")
         // }
-        console.log("Exists before queue:", fs.existsSync(videoFileLocalPath));
-        const success=await enqueueVideoProcessing({
-            videoId:video._id,
-            videoPath:videoFileLocalPath,
-            thumbnailPath:thumbnailLocalPath
-        })
+        let success = false;
+        try {
+            success = await enqueueVideoProcessing({
+                videoId: video._id,
+                videoPath: videoFileLocalPath,
+                thumbnailPath: thumbnailLocalPath
+            });
+        } catch (queueErr) {
+            await Video.findByIdAndDelete(video._id);
+            throw new ApiError(500, queueErr?.message || "Failed to start processing");
+        }
         if(!success){
+            await Video.findByIdAndDelete(video._id);
             throw new ApiError(500,"Failed to start processing");
         }
-        const keys = await redisClient.keys(`videos:${req.user.username}:*`);
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-        }
+        await clearVideoListCache(req.user.username);
         const channelStatKeys=await redisClient.keys(`channelStats:${req.user._id}`);
         if(channelStatKeys.length>0){
             await redisClient.del(channelStatKeys);
@@ -131,19 +173,20 @@
     });
 
     const getVideoById = asyncHandler(async (req, res) => {
-        const { videoId } = req.params
+        const { videoId } = req.params;
         if (!mongoose.Types.ObjectId.isValid(videoId)) {
             throw new ApiError(400, "Invalid video id");
         }
-        // console.log(videoId)
-        const video=await Video.findById(videoId);
+        const video = await Video.findById(videoId).populate("owner", "username fullName avatar");
         if(!video){
             throw new ApiError(404,"Video not found");
+        }
+        if(!video.isPublic && video.owner._id.toString() !== req.user?._id?.toString()){
+            throw new ApiError(400, "Video has been made private by the owner");
         }
         return res.status(200).json(
             new ApiResponse(200,video,"Video found")
         );
-        //TODO: get video by id
     })
 
     const updateVideo = asyncHandler(async (req, res) => {
@@ -162,7 +205,7 @@
         if(!video){
             throw new ApiError(404,"Video not found");
         }
-        if(video.owner.toString()!=userId.toString()){
+        if(video.owner.toString() !== userId.toString()){
             throw new ApiError(403,"Invalid access request");
         }
         
@@ -192,11 +235,7 @@
         // {new : true}
         // )
         await redisClient.del(`video:${videoId}`);
-
-        const keys = await redisClient.keys(`videos:${req.user.username}:*`);
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-        }
+        await clearVideoListCache(req.user.username);
         return res.status(200).json(new ApiResponse(200,video,"Video updated successfully"))
         
     })
@@ -215,14 +254,18 @@
         if(!deletedVideo){
             throw new ApiError(404,"Video not found or invalid access");
         }
-        await cloudinary.uploader.destroy(
-            deletedVideo.videoFile.public_id,
-            { resource_type: "video" }
-        );
+        if (deletedVideo.videoFile?.public_id) {
+            await cloudinary.uploader.destroy(
+                deletedVideo.videoFile.public_id,
+                { resource_type: "video" }
+            );
+        }
 
-        await cloudinary.uploader.destroy(
-            deletedVideo.thumbnail.public_id
-        );
+        if (deletedVideo.thumbnail?.public_id) {
+            await cloudinary.uploader.destroy(
+                deletedVideo.thumbnail.public_id
+            );
+        }
         await User.updateMany({
             watchHistory : videoId
         },
@@ -230,6 +273,12 @@
             $pull : { watchHistory : videoId}
         }
         )
+        // Delete likes on all comments belonging to this video before deleting the comments
+        const comments = await Comment.find({ video: videoId }).select('_id');
+        const commentIds = comments.map((comment) => comment._id);
+        if (commentIds.length > 0) {
+            await Like.deleteMany({ comment: { $in: commentIds } });
+        }
         await Like.deleteMany({video : videoId})
         await Comment.deleteMany({video : videoId})
         await Playlist.updateMany({videos : videoId},{
@@ -237,13 +286,11 @@
         })
         await redisClient.del(`video:${videoId}`);
 
-        const keys = await redisClient.keys(`videos:${req.user.username}:*`);
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-        }
+        await clearVideoListCache(req.user.username);
+
         const commentKeys=await redisClient.keys(`comments:${videoId}:*`)
-            if(commentKeys.length>0){
-                await redisClient.del(keys);
+        if(commentKeys.length>0){
+            await redisClient.del(commentKeys);
         }
         await redisClient.del(`channelStats:${req.user._id}`)
         return res.status(200).json(new ApiResponse(200,{},"Video deleted"));
@@ -259,7 +306,7 @@
         if(!video){
             throw new ApiError(404,"Video not found");
         }
-        if(video.owner.toString()!=userId.toString()){
+        if(video.owner.toString() !== userId.toString()){
             throw new ApiError(403,"Invalid access request");
         }
         video.isPublic=(!video.isPublic);
@@ -277,44 +324,42 @@
         //     throw new ApiError(404,"Video not found or invalid access");
         // }
         await redisClient.del(`video:${videoId}`);
-
-        const keys = await redisClient.keys(`videos:${req.user.username}:*`);
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-        }
+        await clearVideoListCache(req.user.username);
         return res.status(200).json(new ApiResponse(200,video,"Publish status updated"));
 
     })
     const watchVideo = asyncHandler(async(req,res)=>{
-        const { videoId } = req.params
+        const { videoId } = req.params;
         if (!mongoose.Types.ObjectId.isValid(videoId)) {
             throw new ApiError(400, "Invalid video id");
         }
-        // console.log(videoId);
         const userId=req.user._id;
-        if(!videoId){
-            throw new ApiError(400,"Invalid video id");
-        }
-        const video = await Video.findById(videoId);
+        const video = await Video.findById(videoId).populate("owner", "username");
         if(!video){
             throw new ApiError(404,"Video not found");
         }
         if(!video.isPublic){
             throw new ApiError(400,"Video has been made private by the owner");
         }
-        video.views++;
-        await User.findByIdAndUpdate(userId, {
-            $push: { watchHistory: videoId }
+        await Video.findByIdAndUpdate(videoId, {
+            $inc: { views: 1 }
         });
-        await video.save();
+        await User.findByIdAndUpdate(userId, {
+            $pull: { watchHistory: videoId }
+        });
+        await User.findByIdAndUpdate(userId, {
+            $push: {
+                watchHistory: {
+                    $each: [videoId],
+                    $position: 0
+                }
+            }
+        });
         await redisClient.del(`video:${videoId}`);
 
-        const keys = await redisClient.keys(`videos:${req.user.username}:*`);
-        if (keys.length > 0) {
-            await redisClient.del(keys);
-        }
+        await clearVideoListCache(video.owner?.username || req.user.username);
         await redisClient.del(`watchHistory:${req.user._id}`);
-        //await redisClient.del(`channelStats:${video.owner}`)
+        await redisClient.del(`channelStats:${video.owner?._id || video.owner}`);
         return res.status(200).json(new ApiResponse(200,video,"Details updated successfully"));
     })
-    export {publishAVideo,getVideoById,updateVideo,deleteVideo,togglePublishStatus,watchVideo,getAllVideos}
+    export { publishAVideo, getVideoById, updateVideo, deleteVideo, togglePublishStatus, watchVideo, getAllVideos, getAllVideosByUser, clearVideoListCache };

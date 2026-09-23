@@ -7,7 +7,6 @@ import { Worker } from "bullmq";
 import { connection } from "../queue/queue.config.js";
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath.path || ffprobePath);
-console.log("ffprobePath:", ffprobePath);
 const getVideoDuration = (filePath) => {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -18,7 +17,12 @@ const getVideoDuration = (filePath) => {
 };
 import connectDB from "../db/index.js";
 
-await connectDB();
+try {
+  await connectDB();
+} catch (err) {
+  console.error("Worker DB connection failed:", err);
+  process.exit(1);
+}
 const worker = new Worker(
     "video-processing",
     async (job)=>{

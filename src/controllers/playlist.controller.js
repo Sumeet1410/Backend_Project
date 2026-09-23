@@ -49,6 +49,9 @@ const getPlaylistById = asyncHandler(async (req, res) => {
     }
     const playlist=await Playlist.findById(playlistId)
     .populate("videos")
+    if(!playlist){
+        throw new ApiError(404, "Playlist not found");
+    }
     return res.status(200).json(
         new ApiResponse(200,playlist,"Playlist fetched successfully")
     )
@@ -158,9 +161,6 @@ const updatePlaylist = asyncHandler(async (req, res) => {
     }
     const {name, description} = req.body
     const userId=req.user._id
-    if(!playlistId){
-        throw new ApiError(400,"Invalid playlist id")
-    }
     if(!name?.trim()){
         throw new ApiError(400,"Name cannot be empty");
     }

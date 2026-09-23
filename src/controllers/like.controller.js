@@ -93,16 +93,127 @@ const toggleTweetLike = asyncHandler(async (req, res) => {
 )
 
 const getLikedVideos = asyncHandler(async (req, res) => {
-    const user=req.user._id
-    const likes= await Like.find({
+    const user = req.user._id;
+    const likes = await Like.find({
         likedBy: user,
         video: { $ne: null }
-    })
-    const videos=likes.map(like=>like.video)
-    .populate("video")
-    return res.status(200).json(
-        new ApiResponse(200,videos,"All videos liked by the user fetched")
-    )
-})
+    }).populate({
+        path: "video",
+        populate: {
+            path: "owner"
+        }
+    });
 
-export {toggleCommentLike,toggleVideoLike,toggleTweetLike,getLikedVideos}
+    const videos = likes
+        .map((like) => like.video)
+        .filter((video) => video !== null && video !== undefined);
+
+    return res.status(200).json(
+        new ApiResponse(200, videos, "All videos liked by the user fetched")
+    );
+});
+
+const isCommentLiked = asyncHandler(async (req, res) => {
+    const { commentId } = req.params;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+        throw new ApiError(400, "Invalid comment id");
+    }
+
+    const like = await Like.findOne({ likedBy: userId, comment: commentId });
+
+    return res.status(200).json(
+        new ApiResponse(200, { isLiked: !!like }, "Comment like status fetched successfully")
+    );
+});
+
+const isTweetLiked = asyncHandler(async (req, res) => {
+    const { tweetId } = req.params;
+    const userId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(tweetId)) {
+        throw new ApiError(400, "Invalid tweet id");
+    }
+
+    const like = await Like.findOne({ likedBy: userId, tweet: tweetId });
+
+    return res.status(200).json(
+        new ApiResponse(200, { isLiked: !!like }, "Tweet like status fetched successfully")
+    );
+});
+
+const getVideoLikes = asyncHandler(async (req, res) => {
+    const { videoId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(videoId)) {
+        throw new ApiError(400, "Invalid video id");
+    }
+
+    const likes = await Like.find({ video: videoId }).populate("likedBy", "fullName username avatar");
+    const isLiked = req.user?._id
+        ? likes.some((like) => like.likedBy?._id?.toString() === req.user._id.toString() || like.likedBy?.toString() === req.user._id.toString())
+        : false;
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            likesCount: likes.length,
+            isLiked,
+            likes
+        }, "Video likes fetched successfully")
+    );
+});
+
+const getCommentLikes = asyncHandler(async (req, res) => {
+    const { commentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(commentId)) {
+        throw new ApiError(400, "Invalid comment id");
+    }
+
+    const likes = await Like.find({ comment: commentId }).populate("likedBy", "fullName username avatar");
+    const isLiked = req.user?._id
+        ? likes.some((like) => like.likedBy?._id?.toString() === req.user._id.toString() || like.likedBy?.toString() === req.user._id.toString())
+        : false;
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            likesCount: likes.length,
+            isLiked,
+            likes
+        }, "Comment likes fetched successfully")
+    );
+});
+
+const getTweetLikes = asyncHandler(async (req, res) => {
+    const { tweetId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(tweetId)) {
+        throw new ApiError(400, "Invalid tweet id");
+    }
+
+    const likes = await Like.find({ tweet: tweetId }).populate("likedBy", "fullName username avatar");
+    const isLiked = req.user?._id
+        ? likes.some((like) => like.likedBy?._id?.toString() === req.user._id.toString() || like.likedBy?.toString() === req.user._id.toString())
+        : false;
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            likesCount: likes.length,
+            isLiked,
+            likes
+        }, "Tweet likes fetched successfully")
+    );
+});
+
+export {
+    toggleCommentLike,
+    toggleVideoLike,
+    toggleTweetLike,
+    getLikedVideos,
+    isCommentLiked,
+    isTweetLiked,
+    getVideoLikes,
+    getCommentLikes,
+    getTweetLikes,
+};
